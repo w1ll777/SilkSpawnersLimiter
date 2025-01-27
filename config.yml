@@ -1,0 +1,4 @@
+group-cooldowns:
+  default: 60000  # 1 minute cooldown for default group
+  vip: 30000      # 30 seconds cooldown for VIP group
+  admin: 0        # No cooldown for admin group
