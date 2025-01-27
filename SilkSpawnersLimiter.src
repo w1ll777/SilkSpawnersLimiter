@@ -1,0 +1,79 @@
+package com.example.spawnercooldown;
+
+import net.luckperms.api.LuckPerms;
+import net.luckperms.api.model.user.User;
+import org.bukkit.Bukkit;
+import org.bukkit.Material;
+import org.bukkit.block.Block;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.plugin.RegisteredServiceProvider;
+import org.bukkit.plugin.java.JavaPlugin;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+
+public class SpawnerCooldownPlugin extends JavaPlugin implements Listener {
+
+    private LuckPerms luckPerms;
+    private Map<UUID, Long> cooldowns = new HashMap<>();
+    private Map<String, Long> groupCooldowns = new HashMap<>();
+
+    @Override
+    public void onEnable() {
+        // Load config
+        saveDefaultConfig();
+        loadGroupCooldowns();
+
+        // Hook into LuckPerms
+        RegisteredServiceProvider<LuckPerms> provider = Bukkit.getServicesManager().getRegistration(LuckPerms.class);
+        if (provider != null) {
+            luckPerms = provider.getProvider();
+        } else {
+            getLogger().severe("LuckPerms not found! Disabling plugin.");
+            Bukkit.getPluginManager().disablePlugin(this);
+            return;
+        }
+
+        // Register events
+        Bukkit.getPluginManager().registerEvents(this, this);
+    }
+
+    private void loadGroupCooldowns() {
+        groupCooldowns.clear();
+        for (String group : getConfig().getConfigurationSection("group-cooldowns").getKeys(false)) {
+            long cooldown = getConfig().getLong("group-cooldowns." + group);
+            groupCooldowns.put(group, cooldown);
+        }
+    }
+
+    @EventHandler
+    public void onBlockBreak(BlockBreakEvent event) {
+        Player player = event.getPlayer();
+        Block block = event.getBlock();
+
+        if (block.getType() == Material.SPAWNER) {
+            User user = luckPerms.getUserManager().getUser(player.getUniqueId());
+            if (user == null) return;
+
+            String primaryGroup = user.getPrimaryGroup();
+            long cooldown = groupCooldowns.getOrDefault(primaryGroup, -1L);
+
+            if (cooldown > 0) {
+                long lastBreak = cooldowns.getOrDefault(player.getUniqueId(), 0L);
+                long currentTime = System.currentTimeMillis();
+
+                if (currentTime - lastBreak < cooldown) {
+                    event.setCancelled(true);
+                    player.sendMessage("You must wait " + (cooldown - (currentTime - lastBreak)) / 1000 + " seconds before mining another spawner.");
+                    return;
+                }
+
+                cooldowns.put(player.getUniqueId(), currentTime);
+            }
+        }
+    }
+}
